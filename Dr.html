@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Draw Bricks Web</title>
+    <style>
+        * {
+            margin: 0; padding: 0; box-sizing: border-box;
+            user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+        }
+        body, html {
+            width: 100%; height: 100dvh; overflow: hidden;
+            background-color: #e0e0e0; font-family: Arial, sans-serif; touch-action: none;
+        }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+        .ui-element { pointer-events: auto; }
+
+        /* Toolbars */
+        .left-toolbar, .right-toolbar {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            display: flex; flex-direction: column; gap: 10px;
+            background: rgba(50, 50, 50, 0.85); padding: 10px; border-radius: 12px;
+            max-height: 90vh; overflow-y: auto;
+        }
+        .left-toolbar { left: 10px; }
+        .right-toolbar { right: 10px; }
+
+        .btn {
+            width: 45px; height: 45px; background: #555; color: white;
+            border: none; border-radius: 8px; font-size: 20px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: 0.2s;
+        }
+        .btn.active { background: #007BFF !important; }
+
+        /* Shape Popup */
+        #shape-popup {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.95); z-index: 100;
+            display: none; flex-direction: column; padding: 20px;
+        }
+        .popup-header { display: flex; justify-content: flex-end; }
+        .close-btn {
+            background: #ff3333; color: white; border: none; font-size: 20px;
+            width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-weight: bold;
+        }
+        .shape-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 15px; margin-top: 20px; overflow-y: auto;
+        }
+        .shape-item {
+            background: #333; height: 80px; border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-size: 14px; cursor: pointer;
+            border: 2px solid #555; text-align: center; padding: 10px;
+        }
+        .shape-item.active { border-color: #007BFF; background: #444; }
+
+        /* Color Picker Modal */
+        #color-modal {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9); z-index: 200;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+        }
+        .color-container {
+            background: #333; padding: 20px; border-radius: 15px; width: 90%; max-width: 400px;
+            display: flex; flex-direction: column; gap: 15px; color: white;
+        }
+        .saved-colors-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+            gap: 10px; background: #222; padding: 10px; border-radius: 10px; min-height: 60px;
+        }
+        .saved-color-box {
+            width: 40px; height: 40px; border-radius: 5px; border: 2px solid #fff;
+            position: relative; cursor: pointer;
+        }
+        .delete-color {
+            position: absolute; top: -5px; right: -5px; background: red; color: white;
+            border-radius: 50%; width: 16px; height: 16px; font-size: 10px;
+            display: flex; align-items: center; justify-content: center; cursor: pointer;
+        }
+        .color-controls { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .color-controls input[type="color"] { width: 100%; height: 50px; border: none; cursor: pointer; }
+        .modal-actions { display: flex; justify-content: space-between; gap: 10px; }
+        .modal-actions button { flex: 1; padding: 10px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; }
+        .btn-ok { background: #007BFF; color: white; }
+        .btn-cancel { background: #777; color: white; }
+
+        #texture-upload { display: none; }
+        
+        #fullscreen-prompt {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 1000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: white; text-align: center;
+        }
+        #fullscreen-prompt button { margin-top: 20px; padding: 15px 30px; font-size: 18px; background: #007BFF; color: white; border: none; border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="fullscreen-prompt">
+        <h2>Draw Bricks</h2>
+        <p>সর্বোচ্চ স্ক্রিন ব্যবহারের জন্য ফুলস্ক্রিনে যান</p>
+        <button id="btn-fullscreen">Go Fullscreen & Start</button>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <!-- Left Toolbar -->
+        <div class="left-toolbar ui-element">
+            <button class="btn" id="btn-pan-lock" title="Pan Mode">🔒</button>
+            <button class="btn" id="btn-select" title="Select Block">👆</button>
+            <button class="btn" id="btn-radius" title="Make Rounded">🔘</button>
+            <button class="btn" id="btn-paint-tool" title="Color Paste">🖌️</button>
+            <button class="btn" id="btn-melt-mode" title="Melt Mode">🧊</button>
+        </div>
+
+        <!-- Right Toolbar -->
+        <div class="right-toolbar ui-element">
+            <button class="btn" id="btn-open-shapes">🧱</button>
+            <button class="btn" id="btn-color-picker">🎨</button>
+            <input type="file" id="texture-upload" accept="image/*">
+            <button class="btn" id="btn-texture">🖼️</button>
+        </div>
+    </div>
+
+    <div id="shape-popup">
+        <div class="popup-header">
+            <button class="close-btn" id="close-popup">✕</button>
+        </div>
+        <div class="shape-grid" id="shape-grid"></div>
+    </div>
+
+    <div id="color-modal">
+        <div class="color-container">
+            <h3>Select Color</h3>
+            <div class="saved-colors-grid" id="saved-colors-grid"></div>
+            <div class="color-controls">
+                <input type="color" id="native-color-input" value="#ff0000">
+            </div>
+            <div class="modal-actions">
+                <button class="btn-cancel" id="btn-color-cancel">Cancel</button>
+                <button class="btn-ok" id="btn-color-ok">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- RoundedBoxGeometry for the Radius feature -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/geometries/RoundedBoxGeometry.js"></script>
+
+    <script>
+        // --- 1. FULLSCREEN ---
+        document.getElementById('btn-fullscreen').addEventListener('click', () => {
+            const elem = document.documentElement;
+            if (elem.requestFullscreen) elem.requestFullscreen().catch(err => console.log(err));
+            else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+            document.getElementById('fullscreen-prompt').style.display = 'none';
+        });
+
+        // --- 2. SCENE SETUP ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xe0e0e0);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(15, 15, 15);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
+
+        // Camera Controls
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08; 
+        controls.rotateSpeed = 0.6;
+        controls.zoomSpeed = 0.8;
+        controls.maxPolarAngle = Math.PI / 2 - 0.05;
+        controls.minDistance = 5;
+        controls.maxDistance = 40;
+        controls.enablePan = false; 
+
+        // Lights
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6)); // Reduced ambient to see lights better
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        dirLight.position.set(10, 20, 10);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        // Grid
+        const gridSize = 20;
+        const gridHelper = new THREE.GridHelper(gridSize, gridSize, 0x888888, 0xcccccc);
+        scene.add(gridHelper);
+        
+        const planeGeo = new THREE.PlaneGeometry(gridSize, gridSize);
+        const planeMat = new THREE.MeshBasicMaterial({ visible: false });
+        const plane = new THREE.Mesh(planeGeo, planeMat);
+        plane.rotation.x = -Math.PI / 2;
+        plane.receiveShadow = true;
+        scene.add(plane);
+
+        // --- 3. STATE & CUSTOM SHAPES ---
+        let currentShape = 'cube';
+        let currentColor = '#ff0000';
+        let currentTexture = null;
+        let isPanMode = false;
+        let isMeltMode = false;
+        let isPaintMode = false;
+        let isSelectMode = false;
+        let selectedBlock = null;
+
+        const blocks = []; 
+        const occupiedGrid = new Set(); 
+
+        // Custom Geometries
+        function createWedgeGeometry(w, h, d) {
+            const shape = new THREE.Shape();
+            shape.moveTo(0, 0); shape.lineTo(w, 0); shape.lineTo(0, h); shape.lineTo(0, 0);
+            const geo = new THREE.ExtrudeGeometry(shape, { depth: d, bevelEnabled: false });
+            geo.center(); return geo;
+        }
+
+        function createCurvedGeometry(radius, height) {
+            const geo = new THREE.CylinderGeometry(radius, radius, height, 32, 1, false, 0, Math.PI / 2);
+            geo.rotateX(Math.PI / 2); geo.rotateZ(Math.PI / 2); geo.center(); return geo;
+        }
+
+        // Shape Definitions
+        const shapesData = {
+            'cube': { w: 1, h: 1, d: 1, name: 'Cube' },
+            'small_cube': { w: 0.5, h: 0.5, d: 0.5, name: 'Small Cube' },
+            'plate': { w: 2, h: 0.2, d: 2, name: 'Thin Plate' },
+            'tall': { w: 1, h: 3, d: 1, name: 'Tall Pillar' },
+            'long': { w: 3, h: 1, d: 1, name: 'Long Block' },
+            'wall': { w: 3, h: 2, d: 0.5, name: 'Wall' },
+            'slash': { name: 'Slash (Wedge)', custom: 'wedge' },
+            'curved': { name: 'Curved', custom: 'curve' },
+            'wheel': { w: 1, h: 1, d: 0.4, name: 'Tire / Wheel', isWheel: true },
+            'light_block': { w: 1, h: 1, d: 1, name: 'Light Block', isLight: true },
+            'headlight': { w: 0.5, h: 0.5, d: 0.2, name: 'Headlight', isHeadlight: true },
+            'siren': { w: 1, h: 0.5, d: 0.5, name: 'Siren', isSiren: true }
+        };
+
+        let savedColors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ffffff', '#000000', '#00ffff'];
+
+        // --- 4. UI LOGIC ---
+        const shapePopup = document.getElementById('shape-popup');
+        const shapeGrid = document.getElementById('shape-grid');
+        const colorModal = document.getElementById('color-modal');
+        const savedColorsGrid = document.getElementById('saved-colors-grid');
+        const nativeColorInput = document.getElementById('native-color-input');
+
+        for (const [key, data] of Object.entries(shapesData)) {
+            const div = document.createElement('div');
+            div.className = 'shape-item';
+            div.innerText = data.name;
+            div.onclick = () => { currentShape = key; shapePopup.style.display = 'none'; };
+            shapeGrid.appendChild(div);
+        }
+
+        function renderSavedColors() {
+            savedColorsGrid.innerHTML = '';
+            savedColors.forEach(color => {
+                const box = document.createElement('div');
+                box.className = 'saved-color-box';
+                box.style.backgroundColor = color;
+                box.onclick = (e) => {
+                    if (e.target.classList.contains('delete-color')) return;
+                    currentColor = color;
+                    nativeColorInput.value = color;
+                    currentTexture = null;
+                };
+                const delBtn = document.createElement('div');
+                delBtn.className = 'delete-color'; delBtn.innerText = '✕';
+                delBtn.onclick = () => { savedColors = savedColors.filter(c => c !== color); renderSavedColors(); };
+                box.appendChild(delBtn); savedColorsGrid.appendChild(box);
+            });
+        }
+        renderSavedColors();
+
+        document.getElementById('btn-color-picker').onclick = () => colorModal.style.display = 'flex';
+        document.getElementById('btn-color-cancel').onclick = () => colorModal.style.display = 'none';
+        document.getElementById('btn-color-ok').onclick = () => {
+            const selectedColor = nativeColorInput.value;
+            if (!savedColors.includes(selectedColor)) {
+                savedColors.unshift(selectedColor);
+                if (savedColors.length > 10) savedColors.pop();
+                renderSavedColors();
+            }
+            currentColor = selectedColor;
+            currentTexture = null;
+            colorModal.style.display = 'none';
+        };
+
+        document.getElementById('btn-open-shapes').onclick = () => shapePopup.style.display = 'flex';
+        document.getElementById('close-popup').onclick = () => shapePopup.style.display = 'none';
+
+        // --- 5. MODES (PAN, MELT, PAINT, SELECT) ---
+        function resetModes(except) {
+            if (except !== 'pan') { isPanMode = false; document.getElementById('btn-pan-lock').classList.remove('active'); controls.enablePan = false; controls.enableRotate = true; controls.enableZoom = true; controls.touches.ONE = THREE.TOUCH.ROTATE; }
+            if (except !== 'melt') { isMeltMode = false; document.getElementById('btn-melt-mode').classList.remove('active'); }
+            if (except !== 'paint') { isPaintMode = false; document.getElementById('btn-paint-tool').classList.remove('active'); }
+            if (except !== 'select') { isSelectMode = false; document.getElementById('btn-select').classList.remove('active'); }
+        }
+
+        document.getElementById('btn-pan-lock').onclick = () => {
+            const state = !isPanMode; resetModes('pan'); isPanMode = state;
+            document.getElementById('btn-pan-lock').classList.toggle('active', isPanMode);
+            if (isPanMode) {
+                controls.enableRotate = false; controls.enableZoom = false; controls.enablePan = true;
+                controls.touches.ONE = THREE.TOUCH.PAN; controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+            }
+        };
+
+        document.getElementById('btn-melt-mode').onclick = () => {
+            const state = !isMeltMode; resetModes('melt'); isMeltMode = state;
+            document.getElementById('btn-melt-mode').classList.toggle('active', isMeltMode);
+        };
+
+        document.getElementById('btn-paint-tool').onclick = () => {
+            const state = !isPaintMode; resetModes('paint'); isPaintMode = state;
+            document.getElementById('btn-paint-tool').classList.toggle('active', isPaintMode);
+        };
+
+        document.getElementById('btn-select').onclick = () => {
+            const state = !isSelectMode; resetModes('select'); isSelectMode = state;
+            document.getElementById('btn-select').classList.toggle('active', isSelectMode);
+            if (!isSelectMode && selectedBlock) {
+                // Remove highlight
+                selectedBlock.material.emissive.setHex(0x000000);
+                selectedBlock = null;
+            }
+        };
+
+        // --- 6. RADIUS / ROUNDING FEATURE ---
+        document.getElementById('btn-radius').onclick = () => {
+            if (!selectedBlock) {
+                alert("প্রথমে 'Select' (👆) বাটন চেপে একটি ব্লক সিলেক্ট করুন!");
+                return;
+            }
+            // Change geometry to RoundedBox
+            const boxGeo = selectedBlock.geometry;
+            // Get current dimensions approx
+            boxGeo.computeBoundingBox();
+            const size = new THREE.Vector3();
+            boxGeo.boundingBox.getSize(size);
+            
+            const roundedGeo = new THREE.RoundedBoxGeometry(size.x, size.y, size.z, 4, 0.15);
+            selectedBlock.geometry.dispose(); // Free memory
+            selectedBlock.geometry = roundedGeo;
+            
+            // Remove highlight
+            selectedBlock.material.emissive.setHex(0x000000);
+            selectedBlock = null;
+        };
+
+        // --- 7. TEXTURE UPLOAD ---
+        document.getElementById('btn-texture').onclick = () => document.getElementById('texture-upload').click();
+        document.getElementById('texture-upload').onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    new THREE.TextureLoader().load(event.target.result, (texture) => {
+                        texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping;
+                        currentTexture = texture;
+                    });
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+
+        // --- 8. TAP & RAYCAST LOGIC ---
+        let touchStartTime = 0, touchStartX = 0, touchStartY = 0;
+
+        renderer.domElement.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                touchStartTime = Date.now(); touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY;
+            }
+        });
+
+        renderer.domElement.addEventListener('touchend', (e) => {
+            if (e.changedTouches.length === 1 && e.touches.length === 0) {
+                const dist = Math.hypot(e.changedTouches[0].clientX - touchStartX, e.changedTouches[0].clientY - touchStartY);
+                if (Date.now() - touchStartTime < 250 && dist < 10) {
+                    handleTap(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+                }
+            }
+        });
+
+        renderer.domElement.addEventListener('mousedown', (e) => {
+            touchStartTime = Date.now(); touchStartX = e.clientX; touchStartY = e.clientY;
+        });
+        renderer.domElement.addEventListener('mouseup', (e) => {
+            const dist = Math.hypot(e.clientX - touchStartX, e.clientY - touchStartY);
+            if (Date.now() - touchStartTime < 250 && dist < 10) {
+                handleTap(e.clientX, e.clientY);
+            }
+        });
+
+        function handleTap(clientX, clientY) {
+            const mouse = new THREE.Vector2();
+            mouse.x = (clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+
+            // 1. SELECT MODE
+            if (isSelectMode) {
+                const hits = raycaster.intersectObjects(blocks);
+                if (hits.length > 0) {
+                    if (selectedBlock) selectedBlock.material.emissive.setHex(0x000000);
+                    selectedBlock = hits[0].object;
+                    selectedBlock.material.emissive.setHex(0x333333); // Highlight
+                }
+                return;
+            }
+
+            // 2. PAINT MODE
+            if (isPaintMode) {
+                const blockHits = raycaster.intersectObjects(blocks);
+                if (blockHits.length > 0) {
+                    const hitBlock = blockHits[0].object;
+                    hitBlock.material.color.set(currentColor);
+                    if(hitBlock.userData.light) hitBlock.userData.light.color.set(currentColor);
+                    hitBlock.material.map = null; hitBlock.material.needsUpdate = true;
+                }
+                return;
+            }
+
+            // 3. PLACE MODE (Stacking)
+            const intersects = raycaster.intersectObjects([plane, ...blocks]);
+            if (intersects.length > 0) {
+                const hit = intersects[0];
+                let targetX, targetY, targetZ;
+
+                if (hit.object === plane) {
+                    targetX = Math.round(hit.point.x); targetZ = Math.round(hit.point.z); targetY = 0;
+                } else {
+                    const normal = hit.face.normal.clone();
+                    normal.transformDirection(hit.object.matrixWorld);
+                    targetX = Math.round(hit.object.position.x + normal.x);
+                    targetY = Math.round(hit.object.position.y + normal.y);
+                    targetZ = Math.round(hit.object.position.z + normal.z);
+                    if (targetY < 0) return;
+                }
+                placeBlock(targetX, targetY, targetZ);
+            }
+        }
+
+        // --- 9. PLACE BLOCK LOGIC ---
+        function placeBlock(x, y, z) {
+            const shape = shapesData[currentShape];
+            const gridKey = `${x},${y},${z}`;
+            if (!isMeltMode && occupiedGrid.has(gridKey)) return; 
+
+            let geometry;
+            let blockHeight = 1;
+            
+            if (shape.isWheel) {
+                geometry = new THREE.CylinderGeometry(shape.w/2, shape.w/2, shape.d, 16);
+                geometry.rotateZ(Math.PI / 2); // Lie flat like a tire
+                blockHeight = shape.w;
+            } else if (shape.custom === 'wedge') {
+                geometry = createWedgeGeometry(1, 1, 1); blockHeight = 1;
+            } else if (shape.custom === 'curve') {
+                geometry = createCurvedGeometry(0.5, 1); blockHeight = 1;
+            } else {
+                geometry = new THREE.BoxGeometry(shape.w, shape.h, shape.d);
+                blockHeight = shape.h;
+            }
+
+            const material = new THREE.MeshStandardMaterial({
+                color: currentTexture ? 0xffffff : currentColor,
+                map: currentTexture,
+                roughness: shape.isLight ? 0.1 : 0.8, // Lights are shinier
+                emissive: shape.isLight || shape.isHeadlight || shape.isSiren ? new THREE.Color(currentColor) : new THREE.Color(0x000000),
+                emissiveIntensity: shape.isLight ? 1.0 : 0
+            });
+
+            const block = new THREE.Mesh(geometry, material);
+            block.position.set(x, y + (blockHeight / 2), z);
+            block.castShadow = true;
+            block.receiveShadow = true;
+            scene.add(block);
+            blocks.push(block);
+
+            // Add actual Light Source if it's a light block
+            if (shape.isLight || shape.isHeadlight || shape.isSiren) {
+                let light;
+                if (shape.isHeadlight) {
+                    light = new THREE.SpotLight(currentColor, 5, 15, Math.PI/6, 0.5, 1);
+                    light.position.set(0, 0, -0.2); // Point forward
+                    light.target.position.set(0, 0, -10);
+                    block.add(light.target);
+                } else {
+                    light = new THREE.PointLight(currentColor, 2, 10);
+                }
+                block.add(light);
+                block.userData.light = light; // Save reference
+            }
+
+            if (!isMeltMode) occupiedGrid.add(gridKey); 
+        }
+
+        // --- 10. ANIMATE ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
